@@ -59,7 +59,7 @@ export const getQuestions = async (req, res) => {
 
     const questions = await Question.find(query)
       .populate('lesson', 'title slug')
-      .select('questionText questionImage options correctAnswer explanation subject class chapter difficulty isPremium order isVisible hint')
+      .select('questionText questionImage options correctAnswer explanation subject class chapter difficulty isPremium order isVisible hint _id')
       .sort({ order: 1, createdAt: 1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)

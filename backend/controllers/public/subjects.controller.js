@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Subject from '../../models/Subject.js';
 
 // @desc    Get all subjects (public)
@@ -29,9 +30,23 @@ export const getSubjects = async (req, res) => {
 // @access  Public
 export const getSubjectById = async (req, res) => {
   try {
-    const subject = await Subject.findById(req.params.id)
-      .select('name description level icon color slug order')
-      .lean();
+    const { id } = req.params;
+    let subject;
+
+    // Check if id is a valid MongoDB ObjectId
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      // Try to find by ObjectId first
+      subject = await Subject.findById(id)
+        .select('name description level icon color slug order _id')
+        .lean();
+    }
+
+    // If not found by ObjectId or not a valid ObjectId, try to find by slug
+    if (!subject) {
+      subject = await Subject.findOne({ slug: id, isActive: true })
+        .select('name description level icon color slug order _id')
+        .lean();
+    }
 
     if (!subject) {
       return res.status(404).json({

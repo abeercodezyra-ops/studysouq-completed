@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Section from '../../models/Section.js';
 import Subject from '../../models/Subject.js';
 
@@ -38,12 +39,43 @@ export const getSections = async (req, res) => {
 // @access  Public
 export const getSectionsBySubject = async (req, res) => {
   try {
+    const { id } = req.params;
+    let subjectId = null;
+
+    // First, find the subject by id (could be ObjectId or slug)
+    let subject = null;
+
+    // Check if id is a valid MongoDB ObjectId
+    if (mongoose.Types.ObjectId.isValid(id) && id.length === 24) {
+      // Try to find by ObjectId first
+      subject = await Subject.findById(id).select('_id').lean();
+      if (subject) {
+        subjectId = subject._id;
+      }
+    }
+
+    // If not found by ObjectId or not a valid ObjectId, try to find by slug
+    if (!subject) {
+      subject = await Subject.findOne({ slug: id, isActive: true }).select('_id').lean();
+      if (subject) {
+        subjectId = subject._id;
+      }
+    }
+
+    if (!subjectId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found'
+      });
+    }
+
+    // Now find sections by subject ObjectId
     const sections = await Section.find({ 
-      subject: req.params.id,
+      subject: subjectId,
       isActive: true 
     })
-      .populate('subject', 'name level')
-      .select('name description subject order slug isPremium')
+      .populate('subject', 'name level slug')
+      .select('name description subject order slug isPremium _id')
       .sort('order')
       .lean();
 
