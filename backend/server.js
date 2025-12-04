@@ -42,9 +42,9 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:4173',
-  process.env.FRONTEND_URL,
   'https://studysouq.com',
-  'https://www.studysouq.com'
+  'https://studysouq-admin.vercel.app',
+  process.env.FRONTEND_URL
 ].filter(Boolean);
 
 // Also allow all Vercel preview URLs
@@ -55,21 +55,6 @@ app.use(cors({
     }
     return callback(new Error('CORS not allowed'));
   },
-
-app.use(cors({
-  origin(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error('CORS not allowed'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
-}));
 
 // Handle preflight requests
 app.options('*', cors());
