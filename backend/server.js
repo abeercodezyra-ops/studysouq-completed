@@ -42,8 +42,19 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:4173',
-  process.env.FRONTEND_URL
+  process.env.FRONTEND_URL,
+  'https://studysouq.com',
+  'https://www.studysouq.com'
 ].filter(Boolean);
+
+// Also allow all Vercel preview URLs
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS not allowed'));
+  },
 
 app.use(cors({
   origin(origin, callback) {
