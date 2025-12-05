@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { FileText, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
-import { getLessonsBySection, getSectionById, getSubjectById } from '../../services/publicService';
+import { getLessons, getLessonsBySection, getSectionById, getSubjectById } from '../../services/publicService';
 
 export default function LessonsListPage() {
   const { subjectId, sectionId } = useParams();
@@ -18,8 +18,8 @@ export default function LessonsListPage() {
         setLoading(true);
         setError(null);
 
-        // Fetch section details if sectionId exists
-        if (sectionId) {
+        // Fetch section details if sectionId exists and is not "lessons"
+        if (sectionId && sectionId !== 'lessons') {
           const sectionResult = await getSectionById(sectionId);
           if (sectionResult.success) {
             setSection(sectionResult.data);
@@ -27,24 +27,29 @@ export default function LessonsListPage() {
         }
 
         // Fetch subject details
+        let subjectSlug = subjectId; // Default to subjectId (could be slug or _id)
         if (subjectId) {
           const subjectResult = await getSubjectById(subjectId);
           if (subjectResult.success) {
             setSubject(subjectResult.data);
+            // Use subject slug if available, otherwise use subjectId
+            subjectSlug = subjectResult.data?.slug || subjectId;
           }
         }
 
         // Fetch lessons
-        if (sectionId) {
+        // Check if sectionId is actually "lessons" (route for subjects without sections)
+        if (sectionId && sectionId !== 'lessons') {
+          // Valid sectionId - fetch lessons by section
           const lessonsResult = await getLessonsBySection(sectionId);
           if (lessonsResult.success) {
             setLessons(lessonsResult.data || []);
           } else {
             setError(lessonsResult.message || 'Failed to load lessons');
           }
-        } else if (subjectId) {
-          // If no sectionId, fetch lessons by subject
-          const lessonsResult = await getLessons({ subject: subjectId });
+        } else if (subjectSlug) {
+          // No sectionId or sectionId is "lessons" - fetch lessons directly by subject slug
+          const lessonsResult = await getLessons({ subject: subjectSlug });
           if (lessonsResult.success) {
             setLessons(lessonsResult.data || []);
           } else {
@@ -63,8 +68,8 @@ export default function LessonsListPage() {
   }, [subjectId, sectionId]);
 
   // Determine back link
-  const backLink = sectionId ? `/subjects/${subjectId}` : '/subjects';
-  const backText = sectionId ? 'Back to Sections' : 'Back to Subjects';
+  const backLink = (sectionId && sectionId !== 'lessons') ? `/subjects/${subjectId}` : '/subjects';
+  const backText = (sectionId && sectionId !== 'lessons') ? 'Back to Sections' : 'Back to Subjects';
 
   // Loading state
   if (loading) {

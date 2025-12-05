@@ -45,8 +45,11 @@ export default function LessonPage() {
       }
     };
 
-    if (lessonId) {
+    if (lessonId && lessonId.trim() !== '') {
       fetchLesson();
+    } else {
+      setError('Invalid lesson ID');
+      setLoading(false);
     }
   }, [lessonId]);
 

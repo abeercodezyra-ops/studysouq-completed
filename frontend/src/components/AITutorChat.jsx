@@ -35,16 +35,26 @@ export default function AITutorChat() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const { lessonId } = useParams();
+  
+  // Get lesson context - define early to avoid hoisting issues
+  const [lessonContext, setLessonContext] = useState(null);
 
-  // Generate or retrieve session ID
+  // Generate or retrieve session ID - make it lesson-specific
   useEffect(() => {
-    let storedSessionId = localStorage.getItem('chatSessionId');
-    if (!storedSessionId) {
-      storedSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('chatSessionId', storedSessionId);
+    if (lessonId) {
+      // Create lesson-specific session ID (consistent for same lesson)
+      const lessonSessionId = `lesson_${lessonId}`;
+      setSessionId(lessonSessionId);
+    } else {
+      // Fallback for general chat
+      let storedSessionId = localStorage.getItem('chatSessionId');
+      if (!storedSessionId) {
+        storedSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('chatSessionId', storedSessionId);
+      }
+      setSessionId(storedSessionId);
     }
-    setSessionId(storedSessionId);
-  }, []);
+  }, [lessonId]);
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -57,28 +67,39 @@ export default function AITutorChat() {
     }
   }, [messages, sessionId]);
 
-  // Load messages from localStorage on mount
+  // Load messages from localStorage on mount - but only if lesson context matches
   useEffect(() => {
-    if (sessionId && messages.length === 0) {
+    if (sessionId && messages.length === 0 && lessonContext) {
       try {
         const storedMessages = localStorage.getItem(`chat_messages_${sessionId}`);
         if (storedMessages) {
           const parsedMessages = JSON.parse(storedMessages);
-          setMessages(parsedMessages);
-          console.log('✅ Loaded', parsedMessages.length, 'messages from localStorage');
+          // Check if first message matches current lesson title
+          const firstMessage = parsedMessages[0];
+          if (firstMessage && firstMessage.text && lessonContext.title) {
+            const messageContainsTitle = firstMessage.text.includes(lessonContext.title);
+            if (messageContainsTitle) {
+              setMessages(parsedMessages);
+              console.log('✅ Loaded', parsedMessages.length, 'messages from localStorage for lesson:', lessonContext.title);
+            } else {
+              // Clear old messages if lesson doesn't match
+              console.log('⚠️ Clearing old messages - lesson mismatch');
+              localStorage.removeItem(`chat_messages_${sessionId}`);
+            }
+          } else {
+            setMessages(parsedMessages);
+          }
         }
       } catch (error) {
         console.error('Error loading from localStorage:', error);
       }
     }
-  }, [sessionId]);
+  }, [sessionId, lessonContext]);
 
   // No backend save - only localStorage
   // Messages are automatically saved via useEffect above
 
-  // Get lesson context
-  const [lessonContext, setLessonContext] = useState(null);
-
+  // Fetch lesson context
   useEffect(() => {
     const fetchLessonContext = async () => {
       if (!lessonId) {
@@ -91,7 +112,11 @@ export default function AITutorChat() {
         if (result.success && result.data) {
           setLessonContext({
             title: result.data.title,
-            description: result.data.description || ''
+            description: result.data.description || '',
+            content: result.data.content || '',
+            subject: result.data.subject || '',
+            chapter: result.data.chapter || '',
+            class: result.data.class || ''
           });
         } else {
           setLessonContext(null);
@@ -181,13 +206,14 @@ export default function AITutorChat() {
   }, []);
 
   // Initialize with welcome message (only if no history loaded)
+  // Wait for lesson context to load before showing welcome message
   useEffect(() => {
     if (isOpen && messages.length === 0 && sessionId) {
-      // Wait a bit for history to load, then show welcome if still empty
-      setTimeout(() => {
+      // Wait for lesson context to be fetched
+      const checkAndShowWelcome = () => {
         if (messages.length === 0) {
           const lessonContext = getLessonContext();
-          const welcomeMessage = lessonContext
+          const welcomeMessage = lessonContext && lessonContext.title
             ? `Hi! 👋 I'm your AI tutor for "${lessonContext.title}". Ask me anything about this lesson!`
             : `Hi! 👋 I'm your AI tutor. Ask me anything about your lessons!`;
           
@@ -197,9 +223,21 @@ export default function AITutorChat() {
           };
           setMessages([welcomeMsg]);
         }
-      }, 500);
+      };
+      
+      // If lesson context is already loaded, show welcome immediately
+      if (lessonContext) {
+        checkAndShowWelcome();
+      } else {
+        // Otherwise wait a bit for lesson context to load
+        const timeout = setTimeout(() => {
+          checkAndShowWelcome();
+        }, 1000); // Increased timeout to allow lesson context to load
+        
+        return () => clearTimeout(timeout);
+      }
     }
-  }, [isOpen, sessionId]);
+  }, [isOpen, sessionId, lessonContext, messages.length]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -439,11 +477,27 @@ CRITICAL RULES - STRICTLY ENFORCE:
    - Adapt to their communication style`;
 
     if (lessonContext) {
+      // Truncate lesson content if too long (keep first 8000 characters to avoid token limits)
+      const lessonContent = lessonContext.content 
+        ? (lessonContext.content.length > 8000 
+            ? lessonContext.content.substring(0, 8000) + '... [Content truncated]' 
+            : lessonContext.content)
+        : '';
+      
       systemPrompt += `\n\nCURRENT LESSON CONTEXT:
 - Lesson Title: ${lessonContext.title}
 - Description: ${lessonContext.description || 'No description available'}
+${lessonContext.subject ? `- Subject: ${lessonContext.subject}` : ''}
+${lessonContext.class ? `- Class: ${lessonContext.class}` : ''}
+${lessonContext.chapter ? `- Chapter: ${lessonContext.chapter}` : ''}
+${lessonContent ? `\n\nLESSON CONTENT (This is the main material you should use to answer questions):\n${lessonContent}` : ''}
 
-You MUST focus ALL your answers on this specific lesson topic. Any question not related to "${lessonContext.title}" should be rejected with the standard message.`;
+IMPORTANT INSTRUCTIONS:
+1. You MUST use the lesson content above to answer ALL questions about this lesson
+2. Base your answers on the actual lesson content provided
+3. If the lesson content doesn't contain information about a question, you can use your knowledge but mention it's not in the lesson
+4. Focus ALL your answers on this specific lesson: "${lessonContext.title}"
+5. Any question not related to "${lessonContext.title}" should be rejected with the standard message`;
     } else {
       systemPrompt += `\n\nYou are helping with a general lesson. Only answer questions that are clearly educational and lesson-related.`;
     }
@@ -472,7 +526,7 @@ You MUST focus ALL your answers on this specific lesson topic. Any question not 
         model: 'gpt-4o-mini',
         messages: apiMessages,
         temperature: 0.7,
-        max_tokens: 500
+        max_tokens: 1000 // Increased to handle longer responses with lesson content
       })
     });
 

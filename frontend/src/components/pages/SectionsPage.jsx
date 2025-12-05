@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, Navigate, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { BookOpen, ArrowLeft, Loader2, AlertCircle, Lock } from 'lucide-react';
 import { getSubjectById, getSections } from '../../services/publicService';
@@ -33,10 +33,20 @@ export default function SectionsPage() {
         // Fetch sections for this subject
         const sectionsResult = await getSections(subjectId);
         if (sectionsResult.success) {
-          setSections(sectionsResult.data || []);
+          const fetchedSections = sectionsResult.data || [];
+          setSections(fetchedSections);
+          
+          // If no sections, immediately redirect to lessons (for subjects without sections like O-Level)
+          if (fetchedSections.length === 0) {
+            navigate(`/subjects/${subjectId}/lessons`, { replace: true });
+            return;
+          }
         } else {
           console.warn('Failed to fetch sections:', sectionsResult.message);
           setSections([]);
+          // If sections fetch failed and we have subject, redirect to lessons
+          navigate(`/subjects/${subjectId}/lessons`, { replace: true });
+          return;
         }
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -49,7 +59,7 @@ export default function SectionsPage() {
     if (subjectId) {
       fetchData();
     }
-  }, [subjectId]);
+  }, [subjectId, navigate]);
 
   // Loading state
   if (loading) {
@@ -82,9 +92,16 @@ export default function SectionsPage() {
     );
   }
 
-  // If no sections, redirect to lessons (for subjects without sections like IGCSE)
-  if (sections.length === 0) {
-    return <Navigate to={`/subjects/${subjectId}/lessons`} replace />;
+  // If no sections, show loading (redirect is handled in useEffect)
+  if (sections.length === 0 && !loading) {
+    return (
+      <div className="min-h-screen py-20 px-4 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-[#2F6FED] animate-spin mx-auto mb-4" />
+          <p className="text-[#94A3B8]">Redirecting to lessons...</p>
+        </div>
+      </div>
+    );
   }
   return <div className="min-h-screen py-20 px-4">
       <div className="max-w-6xl mx-auto">

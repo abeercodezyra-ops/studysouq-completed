@@ -22,14 +22,19 @@ export const getAllLessons = async (req, res) => {
     if (subject) query.subject = subject;
     if (isPremium !== '') query.isPremium = isPremium === 'true';
 
-    const lessons = await Lesson.find(query)
-      .populate('createdBy', 'name email')
-      .sort('-createdAt')
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
-
-    const count = await Lesson.countDocuments(query);
+    // Optimize query - select only needed fields
+    // Use Promise.all for parallel execution
+    const [lessons, count] = await Promise.all([
+      Lesson.find(query)
+        .select('title subject chapter class order isPremium isVisible createdAt')
+        .populate('createdBy', 'name email')
+        .sort('-createdAt')
+        .limit(Math.min(limit * 1, 100)) // Cap at 100 to prevent timeout
+        .skip((page - 1) * limit)
+        .lean(),
+      // Use estimatedDocumentCount for faster count (if collection is large)
+      Lesson.estimatedDocumentCount().catch(() => Lesson.countDocuments(query))
+    ]);
 
     res.status(200).json({
       success: true,

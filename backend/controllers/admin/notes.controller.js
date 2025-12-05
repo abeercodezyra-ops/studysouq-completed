@@ -21,15 +21,20 @@ export const getAllNotes = async (req, res) => {
     if (type) query.type = type;
     if (lessonId) query.lesson = lessonId;
 
-    const notes = await Note.find(query)
-      .populate('createdBy', 'name email')
-      .populate('lesson', 'title')
-      .sort('-createdAt')
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
-
-    const count = await Note.countDocuments(query);
+    // Optimize query - select only needed fields and limit populate
+    // Use Promise.all for parallel execution but with timeout protection
+    const [notes, count] = await Promise.all([
+      Note.find(query)
+        .select('title content lesson subject class chapter type images isPremium isVisible createdAt updatedAt')
+        .populate('createdBy', 'name email')
+        .populate('lesson', 'title subject class chapter')
+        .sort('-createdAt')
+        .limit(Math.min(limit * 1, 100)) // Cap at 100 to prevent timeout
+        .skip((page - 1) * limit)
+        .lean(),
+      // Use estimatedDocumentCount for faster count (if collection is large)
+      Note.estimatedDocumentCount().catch(() => Note.countDocuments(query))
+    ]);
 
     res.status(200).json({
       success: true,
@@ -85,8 +90,38 @@ export const getNoteById = async (req, res) => {
 // @access  Admin
 export const createNote = async (req, res) => {
   try {
+    // Log incoming data in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('=== CREATE NOTE REQUEST ===');
+      console.log('Request body:', JSON.stringify(req.body, null, 2));
+    }
+    
+    // Validate required fields before creating
+    if (!req.body.title || !req.body.title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title is required'
+      });
+    }
+    
+    if (!req.body.content || !req.body.content.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Content is required'
+      });
+    }
+    
+    if (!req.body.chapter || isNaN(req.body.chapter) || req.body.chapter < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid chapter number is required (must be at least 1)'
+      });
+    }
+    
+    // Ensure chapter is a number
     const noteData = {
       ...req.body,
+      chapter: Number(req.body.chapter),
       createdBy: req.user._id
     };
 
